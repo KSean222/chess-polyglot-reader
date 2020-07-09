@@ -11,3 +11,11 @@ chess = { version = "3.1.1", optional = true }
 
 [features]
 chess_lib_helpers = ["chess"]
+
+[[test]]
+name = "test_keys"
+required-features = ["chess"]
+
+[[test]]
+name = "test_reader"
+required-features = ["chess"]
