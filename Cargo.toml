@@ -6,5 +6,8 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[dev-dependencies]
-chess = "3.1.1"
+[dependencies]
+chess = { version = "3.1.1", optional = true }
+
+[features]
+chess_lib_helpers = ["chess"]

@@ -95,6 +95,62 @@ impl PolyglotKey {
         }
         hash
     }
+    #[cfg(feature = "chess_lib_helpers")]
+    pub fn from_board(board: &chess::Board) -> Self {
+        let pieces: Vec<_> = board.combined().into_iter().map(|sq| {
+            let piece_type = match board.piece_on(sq).unwrap() {
+                chess::Piece::Pawn => PieceType::Pawn,
+                chess::Piece::Knight => PieceType::Knight,
+                chess::Piece::Bishop => PieceType::Bishop,
+                chess::Piece::Rook => PieceType::Rook,
+                chess::Piece::Queen => PieceType::Queen,
+                chess::Piece::King => PieceType::King
+            };
+            Piece {
+                piece_type,
+                rank: sq.get_rank().to_index(),
+                file: sq.get_file().to_index(),
+                side: if board.color_on(sq).unwrap() == chess::Color::White {
+                    Side::White
+                } else {
+                    Side::Black
+                }
+            }
+        }).collect();
+
+        let white_castle = board.castle_rights(chess::Color::White);
+        let black_castle = board.castle_rights(chess::Color::Black);
+
+        Self {
+            pieces,
+            white_castle: CastleRights {
+                queen_side: white_castle.has_queenside(),
+                king_side: white_castle.has_kingside()
+            },
+            black_castle: CastleRights {
+                queen_side: black_castle.has_queenside(),
+                king_side: black_castle.has_kingside()
+            },
+            en_passant_file: board.en_passant().and_then(|en_passant_sq| {
+                [en_passant_sq.left(), en_passant_sq.right()]
+                    .iter()
+                    .flatten()
+                    .find_map(|&sq| {
+                        if board.piece_on(sq) == Some(chess::Piece::Pawn) &&
+                            board.color_on(sq).unwrap() == board.side_to_move() {
+                            Some(en_passant_sq.get_file().to_index())
+                        } else {
+                            None
+                        }
+                    })
+            }),
+            turn: if board.side_to_move() == chess::Color::White {
+                Side::White
+            } else {
+                Side::Black
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -204,66 +260,10 @@ impl <I: Seek + Read> PolyglotReader<I> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "chess_lib_helpers"))]
 mod tests {
     use crate::*;
     use std::str::FromStr;
-
-    fn key(board: &chess::Board) -> PolyglotKey {
-        let pieces: Vec<_> = board.combined().into_iter().map(|sq| {
-            let piece_type = match board.piece_on(sq).unwrap() {
-                chess::Piece::Pawn => PieceType::Pawn,
-                chess::Piece::Knight => PieceType::Knight,
-                chess::Piece::Bishop => PieceType::Bishop,
-                chess::Piece::Rook => PieceType::Rook,
-                chess::Piece::Queen => PieceType::Queen,
-                chess::Piece::King => PieceType::King
-            };
-            Piece {
-                piece_type,
-                rank: sq.get_rank().to_index(),
-                file: sq.get_file().to_index(),
-                side: if board.color_on(sq).unwrap() == chess::Color::White {
-                    Side::White
-                } else {
-                    Side::Black
-                }
-            }
-        }).collect();
-
-        let white_castle = board.castle_rights(chess::Color::White);
-        let black_castle = board.castle_rights(chess::Color::Black);
-
-        PolyglotKey {
-            pieces,
-            white_castle: CastleRights {
-                queen_side: white_castle.has_queenside(),
-                king_side: white_castle.has_kingside()
-            },
-            black_castle: CastleRights {
-                queen_side: black_castle.has_queenside(),
-                king_side: black_castle.has_kingside()
-            },
-            en_passant_file: board.en_passant().and_then(|en_passant_sq| {
-                [en_passant_sq.left(), en_passant_sq.right()]
-                    .iter()
-                    .flatten()
-                    .find_map(|&sq| {
-                        if board.piece_on(sq) == Some(chess::Piece::Pawn) &&
-                            board.color_on(sq).unwrap() == board.side_to_move() {
-                            Some(en_passant_sq.get_file().to_index())
-                        } else {
-                            None
-                        }
-                    })
-            }),
-            turn: if board.side_to_move() == chess::Color::White {
-                Side::White
-            } else {
-                Side::Black
-            }
-        }
-    }
 
     const TESTS: &[(&str, u64)] = &[
         ("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 0x463b96181691fc9c),
@@ -281,7 +281,7 @@ mod tests {
     fn test_keys() {
         for (i, &(fen, expected)) in TESTS.iter().enumerate() {
             let board = chess::Board::from_str(fen).unwrap();
-            let hash = key(&board).polyglot_hash();
+            let hash = PolyglotKey::from_board(&board).polyglot_hash();
             assert_eq!(hash, expected, "Testing hash for '{}' (Test {})", fen, i + 1);
         }
     }
@@ -295,7 +295,7 @@ mod tests {
 
         for (i, &(fen, _)) in TESTS.iter().enumerate() {
             let board = chess::Board::from_str(fen).unwrap();
-            let k = key(&board);
+            let k = PolyglotKey::from_board(&board);
             let mv = reader.get(&k);
             assert!(mv.is_ok(), "Testing hash for '{}' (Test {})", fen, i + 1);
             println!("Got move: {:?}", mv.unwrap());
