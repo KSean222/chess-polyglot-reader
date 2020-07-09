@@ -48,8 +48,8 @@ impl Piece {
 
 #[derive(Debug)]
 pub struct CastleRights {
-    queen_side: bool,
-    king_side: bool
+    pub queen_side: bool,
+    pub king_side: bool
 }
 
 impl CastleRights {
@@ -72,11 +72,11 @@ impl CastleRights {
 
 #[derive(Debug)]
 struct PolyglotKey {
-    pieces: Vec<Piece>,
-    white_castle: CastleRights,
-    black_castle: CastleRights,
-    en_passant_file: Option<usize>,
-    turn: Side
+    pub pieces: Vec<Piece>,
+    pub white_castle: CastleRights,
+    pub black_castle: CastleRights,
+    pub en_passant_file: Option<usize>,
+    pub turn: Side
 }
 
 impl PolyglotKey {
@@ -99,15 +99,15 @@ impl PolyglotKey {
 
 #[derive(Debug)]
 pub struct Square {
-    rank: usize,
-    file: usize
+    pub rank: usize,
+    pub file: usize
 }
 
 #[derive(Debug)]
 struct Move {
-    source: Square,
-    dest: Square,
-    promotion: Option<PieceType>
+    pub source: Square,
+    pub dest: Square,
+    pub promotion: Option<PieceType>
 }
 
 impl Move {
@@ -138,8 +138,8 @@ impl Move {
 
 #[derive(Debug)]
 struct PolyglotEntry {
-    mv: Move,
-    weight: u16
+    pub mv: Move,
+    pub weight: u16
 }
 
 impl PolyglotEntry {
