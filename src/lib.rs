@@ -167,7 +167,7 @@ struct Move {
 }
 
 impl Move {
-    pub fn from_raw_entry(mv: u16) -> Self {
+    pub fn from_u16(mv: u16) -> Self {
         fn index(mv: u16, i: usize) -> usize {
             ((mv >> (i * 3)) & 0b111) as usize
         }
@@ -200,7 +200,7 @@ struct PolyglotEntry {
 
 impl PolyglotEntry {
     pub const SIZE: usize = 16;
-    pub fn from_raw_entry(bytes: [u8; PolyglotEntry::SIZE]) -> Self {
+    pub fn from_bytes(bytes: &[u8]) -> Self {
         let mut mv = [0; 2];
         mv.copy_from_slice(&bytes[0..2]);
 
@@ -210,7 +210,7 @@ impl PolyglotEntry {
         // The rest is the learn value, but it's not implemented.
 
         Self {
-            mv: Move::from_raw_entry(u16::from_be_bytes(mv)),
+            mv: Move::from_u16(u16::from_be_bytes(mv)),
             weight: u16::from_be_bytes(weight)
         }
     }
@@ -230,30 +230,60 @@ impl <I: Seek + Read> PolyglotReader<I> {
             inner
         })
     }
-    pub fn get(&mut self, key: &PolyglotKey) -> Result<Option<PolyglotEntry>, std::io::Error> {
-        use std::cmp::Ordering;
-
+    pub fn get(&mut self, key: &PolyglotKey) -> Result<Vec<PolyglotEntry>, std::io::Error> {
         let key = key.polyglot_hash();
+        
+        let mut entry_exists = false;
+
         let mut left = 0;
         let mut right = self.len - 1;
-        while left <= right {
+        while left < right {
             let middle = (left + right) / 2;
             self.inner.seek(SeekFrom::Start(middle * PolyglotEntry::SIZE as u64))?;
             
-            let mut entry = [0; PolyglotEntry::SIZE];
-            self.inner.read_exact(&mut entry)?;
-            
             let mut entry_key = [0; 8];
-            entry_key.copy_from_slice(&entry[0..8]);
+            self.inner.read_exact(&mut entry_key)?;
             let entry_key = u64::from_be_bytes(entry_key);
 
-            match entry_key.cmp(&key) {
-                Ordering::Less => left = middle + 1,
-                Ordering::Equal => return Ok(Some(PolyglotEntry::from_raw_entry(entry))),
-                Ordering::Greater => right = middle - 1
+            if entry_key < key {
+                left = middle + 1;
+            } else {
+                if entry_key == key {
+                    entry_exists = true;
+                }
+                right = middle;
             }
         }
-        Ok(None)
+
+        if !entry_exists {
+            return Ok(Vec::new());
+        }
+        let lower_bound = left;
+        
+        left = 0;
+        right = self.len - 1;
+        while left < right {
+            let middle = (left + right + 1) / 2;
+            self.inner.seek(SeekFrom::Start(middle * PolyglotEntry::SIZE as u64))?;
+            
+            let mut entry_key = [0; 8];
+            self.inner.read_exact(&mut entry_key)?;
+            let entry_key = u64::from_be_bytes(entry_key);
+
+            if entry_key > key {
+                right = middle - 1;
+            } else {
+                left = middle;
+            }
+        }
+
+        let upper_bound = right + 1;
+        
+        let mut entries = vec![0; (upper_bound - lower_bound) as usize * PolyglotEntry::SIZE];
+        self.inner.seek(SeekFrom::Start(lower_bound * PolyglotEntry::SIZE as u64))?;
+        self.inner.read_exact(&mut entries)?;
+        
+        Ok(entries.chunks(PolyglotEntry::SIZE).map(PolyglotEntry::from_bytes).collect())
     }
     pub fn len(&self) -> usize {
         self.len as usize
@@ -298,7 +328,7 @@ mod tests {
             let k = PolyglotKey::from_board(&board);
             let mv = reader.get(&k);
             assert!(mv.is_ok(), "Testing hash for '{}' (Test {})", fen, i + 1);
-            println!("Got move: {:?}", mv.unwrap());
+            println!("Got moves: {:?}", mv.unwrap());
         }
     }
 }
