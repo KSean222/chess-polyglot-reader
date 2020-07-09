@@ -8,6 +8,28 @@ pub enum Side {
     Black
 }
 
+#[cfg(feature = "chess_lib_helpers")]
+impl From<chess::Color> for Side {
+    fn from(color: chess::Color) -> Side {
+        if color == chess::Color::White {
+            Side::White
+        } else {
+            Side::Black
+        }
+    }
+}
+
+#[cfg(feature = "chess_lib_helpers")]
+impl From<Side> for chess::Color {
+    fn from(side: Side) -> chess::Color {
+        if side == Side::White {
+            chess::Color::White
+        } else {
+            chess::Color::Black
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum PieceType {
     Pawn,
@@ -16,6 +38,34 @@ pub enum PieceType {
     Rook,
     Queen,
     King
+}
+
+#[cfg(feature = "chess_lib_helpers")]
+impl From<chess::Piece> for PieceType {
+    fn from(piece: chess::Piece) -> PieceType {
+        match piece {
+            chess::Piece::Pawn => PieceType::Pawn,
+            chess::Piece::Knight => PieceType::Knight,
+            chess::Piece::Bishop => PieceType::Bishop,
+            chess::Piece::Rook => PieceType::Rook,
+            chess::Piece::Queen => PieceType::Queen,
+            chess::Piece::King => PieceType::King
+        }
+    }
+}
+
+#[cfg(feature = "chess_lib_helpers")]
+impl From<PieceType> for chess::Piece {
+    fn from(piece: PieceType) -> chess::Piece {
+        match piece {
+            PieceType::Pawn => chess::Piece::Pawn,
+            PieceType::Knight => chess::Piece::Knight,
+            PieceType::Bishop => chess::Piece::Bishop,
+            PieceType::Rook => chess::Piece::Rook,
+            PieceType::Queen => chess::Piece::Queen,
+            PieceType::King => chess::Piece::King
+        }
+    }
 }
 
 impl PieceType {
@@ -35,14 +85,13 @@ impl PieceType {
 pub struct Piece {
     pub piece_type: PieceType,
     pub side: Side,
-    pub rank: usize,
-    pub file: usize
+    pub square: Square
 }
 
 impl Piece {
     pub fn polyglot_hash(&self) -> u64 {
         let kind = self.piece_type.index() * 2 + (self.side == Side::White) as usize;
-        keys::RANDOM_PIECE[64 * kind + 8 * self.rank + self.file]
+        keys::RANDOM_PIECE[64 * kind + 8 * self.square.rank + self.square.file]
     }
 }
 
@@ -50,6 +99,28 @@ impl Piece {
 pub struct CastleRights {
     pub queen_side: bool,
     pub king_side: bool
+}
+
+#[cfg(feature = "chess_lib_helpers")]
+impl From<chess::CastleRights> for CastleRights {
+    fn from(rights: chess::CastleRights) -> CastleRights {
+        CastleRights {
+            queen_side: rights.has_queenside(),
+            king_side: rights.has_kingside()
+        }
+    }
+}
+
+#[cfg(feature = "chess_lib_helpers")]
+impl From<CastleRights> for chess::CastleRights {
+    fn from(rights: CastleRights) -> chess::CastleRights {
+        match (rights.queen_side, rights.king_side) {
+            (false, false) => chess::CastleRights::NoRights,
+            (false, true) => chess::CastleRights::KingSide,
+            (true, false) => chess::CastleRights::QueenSide,
+            (true, true) => chess::CastleRights::Both
+        }
+    }
 }
 
 impl CastleRights {
@@ -97,40 +168,16 @@ impl PolyglotKey {
     }
     #[cfg(feature = "chess_lib_helpers")]
     pub fn from_board(board: &chess::Board) -> Self {
-        let pieces: Vec<_> = board.combined().into_iter().map(|sq| {
-            let piece_type = match board.piece_on(sq).unwrap() {
-                chess::Piece::Pawn => PieceType::Pawn,
-                chess::Piece::Knight => PieceType::Knight,
-                chess::Piece::Bishop => PieceType::Bishop,
-                chess::Piece::Rook => PieceType::Rook,
-                chess::Piece::Queen => PieceType::Queen,
-                chess::Piece::King => PieceType::King
-            };
-            Piece {
-                piece_type,
-                rank: sq.get_rank().to_index(),
-                file: sq.get_file().to_index(),
-                side: if board.color_on(sq).unwrap() == chess::Color::White {
-                    Side::White
-                } else {
-                    Side::Black
-                }
-            }
+        let pieces: Vec<_> = board.combined().into_iter().map(|sq| Piece {
+            piece_type: board.piece_on(sq).unwrap().into(),
+            square: sq.into(),
+            side: board.color_on(sq).unwrap().into()
         }).collect();
-
-        let white_castle = board.castle_rights(chess::Color::White);
-        let black_castle = board.castle_rights(chess::Color::Black);
 
         Self {
             pieces,
-            white_castle: CastleRights {
-                queen_side: white_castle.has_queenside(),
-                king_side: white_castle.has_kingside()
-            },
-            black_castle: CastleRights {
-                queen_side: black_castle.has_queenside(),
-                king_side: black_castle.has_kingside()
-            },
+            white_castle: board.castle_rights(chess::Color::White).into(),
+            black_castle: board.castle_rights(chess::Color::Black).into(),
             en_passant_file: board.en_passant().and_then(|en_passant_sq| {
                 [en_passant_sq.left(), en_passant_sq.right()]
                     .iter()
@@ -144,22 +191,35 @@ impl PolyglotKey {
                         }
                     })
             }),
-            turn: if board.side_to_move() == chess::Color::White {
-                Side::White
-            } else {
-                Side::Black
-            }
+            turn: board.side_to_move().into()
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct Square {
     pub rank: usize,
     pub file: usize
 }
 
-#[derive(Debug)]
+#[cfg(feature = "chess_lib_helpers")]
+impl From<chess::Square> for Square {
+    fn from(sq: chess::Square) -> Square {
+        Square {
+            rank: sq.get_rank().to_index(),
+            file: sq.get_file().to_index()
+        }
+    }
+}
+
+#[cfg(feature = "chess_lib_helpers")]
+impl From<Square> for chess::Square {
+    fn from(sq: Square) -> chess::Square {
+        chess::Square::make_square(chess::Rank::from_index(sq.rank), chess::File::from_index(sq.file))
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
 struct Move {
     pub source: Square,
     pub dest: Square,
