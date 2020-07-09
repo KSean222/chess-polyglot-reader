@@ -349,8 +349,3 @@ impl <I: Seek + Read> PolyglotReader<I> {
         self.len as usize
     }
 }
-
-#[cfg(all(test, feature = "chess_lib_helpers"))]
-mod tests {
-
-}
