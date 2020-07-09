@@ -1,3 +1,5 @@
+use std::io::{Read,Seek,SeekFrom};
+
 pub mod keys;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -95,17 +97,111 @@ impl PolyglotKey<'_> {
     }
 }
 
+#[derive(Debug)]
+pub struct Square {
+    rank: usize,
+    file: usize
+}
+
+#[derive(Debug)]
+struct Move {
+    source: Square,
+    dest: Square,
+    promotion: Option<PieceType>
+}
+
+impl Move {
+    pub fn from_raw_entry(mv: u16) -> Self {
+        fn index(mv: u16, i: usize) -> usize {
+            let i = i * 3;
+            ((mv & (0b111 << i)) >> i) as usize
+        }
+        Self {
+            dest: Square {
+                file: index(mv, 0),
+                rank: index(mv, 1)
+            },
+            source: Square {
+                file: index(mv, 2),
+                rank: index(mv, 3)
+            },
+            promotion: match index(mv, 3) {
+                0 => None,
+                1 => Some(PieceType::Knight),
+                2 => Some(PieceType::Bishop),
+                3 => Some(PieceType::Rook),
+                4 => Some(PieceType::Queen),
+                p => unreachable!("Invalid promotion {}", p)
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
 struct PolyglotEntry {
-
+    mv: Move,
+    weight: u16
 }
 
-struct PolyglotReader {
+impl PolyglotEntry {
+    pub const SIZE: usize = 16;
+    pub fn from_raw_entry(bytes: [u8; PolyglotEntry::SIZE]) -> Self {
+        let mut mv = [0; 2];
+        mv.copy_from_slice(&bytes[0..2]);
 
+        let mut weight = [0; 2];
+        weight.copy_from_slice(&bytes[2..4]);
+
+        // The rest is the learn value, but it's not implemented.
+
+        Self {
+            mv: Move::from_raw_entry(u16::from_be_bytes(mv)),
+            weight: u16::from_be_bytes(weight)
+        }
+    }
 }
 
-impl PolyglotReader {
-    pub fn get(&self, key: &PolyglotKey) {
+#[derive(Debug)]
+struct PolyglotReader<I> {
+    inner: I,
+    len: u64
+}
 
+impl <I: Seek + Read> PolyglotReader<I> {
+    pub fn new(inner: I) -> Result<Self, std::io::Error> {
+        let mut inner = inner;
+        Ok(Self {
+            len: inner.seek(SeekFrom::End(0))? / PolyglotEntry::SIZE as u64,
+            inner
+        })
+    }
+    pub fn get(&mut self, key: &PolyglotKey) -> Result<Option<PolyglotEntry>, std::io::Error> {
+        use std::cmp::Ordering;
+
+        let key = key.polyglot_hash();
+        let mut left = 0;
+        let mut right = self.len - 1;
+        while left <= right {
+            let middle = (left + right) / 2;
+            self.inner.seek(SeekFrom::Start(middle * PolyglotEntry::SIZE as u64))?;
+            
+            let mut entry = [0; PolyglotEntry::SIZE];
+            self.inner.read_exact(&mut entry)?;
+            
+            let mut entry_key = [0; 8];
+            entry_key.copy_from_slice(&entry[0..8]);
+            let entry_key = u64::from_be_bytes(entry_key);
+
+            match entry_key.cmp(&key) {
+                Ordering::Less => left = middle + 1,
+                Ordering::Equal => return Ok(Some(PolyglotEntry::from_raw_entry(entry))),
+                Ordering::Greater => right = middle - 1
+            }
+        }
+        Ok(None)
+    }
+    pub fn len(&self) -> usize {
+        self.len as usize
     }
 }
 
@@ -171,24 +267,41 @@ mod tests {
         f(&key);
     }
 
+    const TESTS: &[(&str, u64)] = &[
+        ("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 0x463b96181691fc9c),
+        ("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1", 0x823c9b50fd114196),
+        ("rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2", 0x0756b94461c50fb0),
+        ("rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR b KQkq - 0 2", 0x662fafb965db29d4),
+        ("rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3", 0x22a48b5a8e47ff78),
+        ("rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPPKPPP/RNBQ1BNR b kq - 0 3", 0x652a607ca3f242c1),
+        ("rnbq1bnr/ppp1pkpp/8/3pPp2/8/8/PPPPKPPP/RNBQ1BNR w - - 0 4", 0x00fdd303c946bdd9),
+        ("rnbqkbnr/p1pppppp/8/8/PpP4P/8/1P1PPPP1/RNBQKBNR b KQkq c3 0 3", 0x3c8123ea7b067637),
+        ("rnbqkbnr/p1pppppp/8/8/P6P/R1p5/1P1PPPP1/1NBQKBNR b Kkq - 0 4", 0x5c3f9b829b279560)
+    ];
+
     #[test]
     fn test_keys() {
-        const TESTS: &[(&str, u64)] = &[
-            ("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 0x463b96181691fc9c),
-            ("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1", 0x823c9b50fd114196),
-            ("rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2", 0x0756b94461c50fb0),
-            ("rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR b KQkq - 0 2", 0x662fafb965db29d4),
-            ("rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3", 0x22a48b5a8e47ff78),
-            ("rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPPKPPP/RNBQ1BNR b kq - 0 3", 0x652a607ca3f242c1),
-            ("rnbq1bnr/ppp1pkpp/8/3pPp2/8/8/PPPPKPPP/RNBQ1BNR w - - 0 4", 0x00fdd303c946bdd9),
-            ("rnbqkbnr/p1pppppp/8/8/PpP4P/8/1P1PPPP1/RNBQKBNR b KQkq c3 0 3", 0x3c8123ea7b067637),
-            ("rnbqkbnr/p1pppppp/8/8/P6P/R1p5/1P1PPPP1/1NBQKBNR b Kkq - 0 4", 0x5c3f9b829b279560)
-        ];
-
         for (i, &(fen, expected)) in TESTS.iter().enumerate() {
             let board = chess::Board::from_str(fen).unwrap();
             key(&board, |k|  {
                 assert_eq!(k.polyglot_hash(), expected, "Testing hash for '{}' (Test {})", fen, i + 1);
+            });
+        }
+    }
+
+    #[test]
+    fn test_reading() {
+        use std::fs::File;
+
+        let file = File::open("test_book.bin").unwrap();
+        let mut reader = PolyglotReader::new(file).unwrap();
+
+        for (i, &(fen, _)) in TESTS.iter().enumerate() {
+            let board = chess::Board::from_str(fen).unwrap();
+            key(&board, |k|  {
+                let mv = reader.get(k);
+                assert!(mv.is_ok(), "Testing hash for '{}' (Test {})", fen, i + 1);
+                println!("Got move: {:?}", mv.unwrap());
             });
         }
     }
