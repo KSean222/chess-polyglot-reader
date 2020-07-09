@@ -71,18 +71,18 @@ impl CastleRights {
 }
 
 #[derive(Debug)]
-struct PolyglotKey<'a> {
-    pieces: &'a [Piece],
+struct PolyglotKey {
+    pieces: Vec<Piece>,
     white_castle: CastleRights,
     black_castle: CastleRights,
     en_passant_file: Option<usize>,
     turn: Side
 }
 
-impl PolyglotKey<'_> {
+impl PolyglotKey {
     pub fn polyglot_hash(&self) -> u64 {
         let mut hash = 0;
-        for piece in self.pieces {
+        for piece in &self.pieces {
             hash ^= piece.polyglot_hash();
         }
         hash ^= self.white_castle.polyglot_hash(Side::White);
@@ -210,7 +210,7 @@ mod tests {
     use crate::*;
     use std::str::FromStr;
 
-    fn key(board: &chess::Board, f: impl FnOnce(&PolyglotKey) -> ()) {
+    fn key(board: &chess::Board) -> PolyglotKey {
         let pieces: Vec<_> = board.combined().into_iter().map(|sq| {
             let piece_type = match board.piece_on(sq).unwrap() {
                 chess::Piece::Pawn => PieceType::Pawn,
@@ -235,8 +235,8 @@ mod tests {
         let white_castle = board.castle_rights(chess::Color::White);
         let black_castle = board.castle_rights(chess::Color::Black);
 
-        let key = PolyglotKey {
-            pieces: &pieces,
+        PolyglotKey {
+            pieces,
             white_castle: CastleRights {
                 queen_side: white_castle.has_queenside(),
                 king_side: white_castle.has_kingside()
@@ -263,8 +263,7 @@ mod tests {
             } else {
                 Side::Black
             }
-        };
-        f(&key);
+        }
     }
 
     const TESTS: &[(&str, u64)] = &[
@@ -283,9 +282,8 @@ mod tests {
     fn test_keys() {
         for (i, &(fen, expected)) in TESTS.iter().enumerate() {
             let board = chess::Board::from_str(fen).unwrap();
-            key(&board, |k|  {
-                assert_eq!(k.polyglot_hash(), expected, "Testing hash for '{}' (Test {})", fen, i + 1);
-            });
+            let hash = key(&board).polyglot_hash();
+            assert_eq!(hash, expected, "Testing hash for '{}' (Test {})", fen, i + 1);
         }
     }
 
@@ -298,11 +296,10 @@ mod tests {
 
         for (i, &(fen, _)) in TESTS.iter().enumerate() {
             let board = chess::Board::from_str(fen).unwrap();
-            key(&board, |k|  {
-                let mv = reader.get(k);
-                assert!(mv.is_ok(), "Testing hash for '{}' (Test {})", fen, i + 1);
-                println!("Got move: {:?}", mv.unwrap());
-            });
+            let k = key(&board);
+            let mv = reader.get(&k);
+            assert!(mv.is_ok(), "Testing hash for '{}' (Test {})", fen, i + 1);
+            println!("Got move: {:?}", mv.unwrap());
         }
     }
 }
