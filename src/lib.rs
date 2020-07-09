@@ -113,8 +113,7 @@ struct Move {
 impl Move {
     pub fn from_raw_entry(mv: u16) -> Self {
         fn index(mv: u16, i: usize) -> usize {
-            let i = i * 3;
-            ((mv & (0b111 << i)) >> i) as usize
+            ((mv >> (i * 3)) & 0b111) as usize
         }
         Self {
             dest: Square {
