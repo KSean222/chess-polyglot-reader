@@ -226,6 +226,24 @@ pub struct Move {
     pub promotion: Option<PieceType>
 }
 
+#[cfg(feature = "chess_lib_helpers")]
+impl From<chess::ChessMove> for Move {
+    fn from(mv: chess::ChessMove) -> Move {
+        Move {
+            source: mv.get_source().into(),
+            dest: mv.get_dest().into(),
+            promotion: mv.get_promotion().map(|p| p.into())
+        }
+    }
+}
+
+#[cfg(feature = "chess_lib_helpers")]
+impl From<Move> for chess::ChessMove {
+    fn from(mv: Move) -> chess::ChessMove {
+        chess::ChessMove::new(mv.source.into(), mv.dest.into(), mv.promotion.map(|p| p.into()))
+    }
+}
+
 impl Move {
     pub fn from_u16(mv: u16) -> Self {
         fn index(mv: u16, i: usize) -> usize {
