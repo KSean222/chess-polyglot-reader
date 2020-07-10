@@ -12,7 +12,7 @@ fn test_reader() {
     let file = File::open("test-data/test_book.bin").unwrap();
     let mut reader = PolyglotReader::new(file).unwrap();
 
-    for (i, fen) in TESTS.iter().enumerate() {
+    for (i, &fen) in TESTS.iter().enumerate() {
         let board = chess::Board::from_str(fen).unwrap();
         let k = PolyglotKey::from_board(&board);
         let moves = reader.get(&k).unwrap();

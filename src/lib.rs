@@ -258,7 +258,7 @@ impl Move {
                 file: index(mv, 2),
                 rank: index(mv, 3)
             },
-            promotion: match index(mv, 3) {
+            promotion: match index(mv, 4) {
                 0 => None,
                 1 => Some(PieceType::Knight),
                 2 => Some(PieceType::Bishop),
@@ -361,7 +361,11 @@ impl <I: Seek + Read> PolyglotReader<I> {
         self.inner.seek(SeekFrom::Start(lower_bound * PolyglotEntry::SIZE as u64))?;
         self.inner.read_exact(&mut entries)?;
         
-        Ok(entries.chunks(PolyglotEntry::SIZE).map(PolyglotEntry::from_bytes).collect())
+        let entries = entries.chunks(PolyglotEntry::SIZE)
+            .map(|entry| PolyglotEntry::from_bytes(&entry[8..]))
+            .collect();
+
+        Ok(entries)
     }
     pub fn len(&self) -> usize {
         self.len as usize
