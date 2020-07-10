@@ -15,7 +15,12 @@ fn test_reader() {
     for (i, fen) in TESTS.iter().enumerate() {
         let board = chess::Board::from_str(fen).unwrap();
         let k = PolyglotKey::from_board(&board);
-        let mv = reader.get(&k).unwrap();
-        assert!(!mv.is_empty(), "Testing reading openings for '{}' (Test {})", fen, i + 1);
+        let moves = reader.get(&k).unwrap();
+        assert!(!moves.is_empty(), "Testing reading openings for '{}' (Test {})", fen, i + 1);
+        let moves: Vec<_> = moves
+            .into_iter()
+            .map(|mv| format!("{}", chess::ChessMove::from(mv.mv)))
+            .collect();
+        println!("Got [{}]", moves.join(", "))
     }
 }
