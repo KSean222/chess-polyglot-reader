@@ -14,8 +14,8 @@ chess_lib_helpers = ["chess"]
 
 [[test]]
 name = "test_keys"
-required-features = ["chess"]
+required-features = ["chess_lib_helpers"]
 
 [[test]]
 name = "test_reader"
-required-features = ["chess"]
+required-features = ["chess_lib_helpers"]
