@@ -309,7 +309,7 @@ impl <I: Seek + Read> PolyglotReader<I> {
         })
     }
     pub fn get(&mut self, key: &PolyglotKey) -> Result<Vec<PolyglotEntry>, std::io::Error> {
-        let key = key.polyglot_hash();
+        let hash = key.polyglot_hash();
         
         let mut entry_exists = false;
 
@@ -323,10 +323,10 @@ impl <I: Seek + Read> PolyglotReader<I> {
             self.inner.read_exact(&mut entry_key)?;
             let entry_key = u64::from_be_bytes(entry_key);
 
-            if entry_key < key {
+            if entry_key < hash {
                 left = middle + 1;
             } else {
-                if entry_key == key {
+                if entry_key == hash {
                     entry_exists = true;
                 }
                 right = middle;
@@ -348,7 +348,7 @@ impl <I: Seek + Read> PolyglotReader<I> {
             self.inner.read_exact(&mut entry_key)?;
             let entry_key = u64::from_be_bytes(entry_key);
 
-            if entry_key > key {
+            if entry_key > hash {
                 right = middle - 1;
             } else {
                 left = middle;
@@ -362,7 +362,26 @@ impl <I: Seek + Read> PolyglotReader<I> {
         self.inner.read_exact(&mut entries)?;
         
         let entries = entries.chunks(PolyglotEntry::SIZE)
-            .map(|entry| PolyglotEntry::from_bytes(&entry[8..]))
+            .map(|entry| {
+                let mut entry = PolyglotEntry::from_bytes(&entry[8..]);
+                if entry.mv.source.file == 4 && entry.mv.source.rank == entry.mv.dest.rank {
+                    let is_castle = match entry.mv.dest {
+                        Square { file: 7, rank: 0 } => key.white_castle.king_side,
+                        Square { file: 0, rank: 0 } => key.white_castle.queen_side,
+                        Square { file: 7, rank: 7 } => key.black_castle.king_side,
+                        Square { file: 0, rank: 7 } => key.black_castle.queen_side,
+                        _ => false
+                    };
+                    if is_castle {
+                        if entry.mv.dest.file < entry.mv.source.file {
+                            entry.mv.dest.file += 1;
+                        } else {
+                            entry.mv.dest.file -= 1;
+                        }
+                    }
+                }
+                entry
+            })
             .collect();
 
         Ok(entries)
