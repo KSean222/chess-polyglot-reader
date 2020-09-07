@@ -270,7 +270,7 @@ impl Move {
     }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct PolyglotEntry {
     pub mv: Move,
     pub weight: u16
@@ -362,26 +362,7 @@ impl <I: Seek + Read> PolyglotReader<I> {
         self.inner.read_exact(&mut entries)?;
         
         let entries = entries.chunks(PolyglotEntry::SIZE)
-            .map(|entry| {
-                let mut entry = PolyglotEntry::from_bytes(&entry[8..]);
-                if entry.mv.source.file == 4 && entry.mv.source.rank == entry.mv.dest.rank {
-                    let is_castle = match entry.mv.dest {
-                        Square { file: 7, rank: 0 } => key.white_castle.king_side,
-                        Square { file: 0, rank: 0 } => key.white_castle.queen_side,
-                        Square { file: 7, rank: 7 } => key.black_castle.king_side,
-                        Square { file: 0, rank: 7 } => key.black_castle.queen_side,
-                        _ => false
-                    };
-                    if is_castle {
-                        if entry.mv.dest.file < entry.mv.source.file {
-                            entry.mv.dest.file += 1;
-                        } else {
-                            entry.mv.dest.file -= 1;
-                        }
-                    }
-                }
-                entry
-            })
+            .map(|entry| PolyglotEntry::from_bytes(&entry[8..]))
             .collect();
 
         Ok(entries)
